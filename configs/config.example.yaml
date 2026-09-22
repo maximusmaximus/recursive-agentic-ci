@@ -1,0 +1,82 @@
+# Recursive Agentic Continuous Integration (HITL) Configuration
+
+server:
+  host: "0.0.0.0"
+  port: 18880
+  debug: false
+  websocket_enabled: true
+  cors_allowed_origins: ["*"]
+
+privacy:
+  provider: "venice"
+  venice:
+    api_key: "${VENICE_API_KEY}"
+    base_url: "https://api.venice.ai/api/v1"
+    model: "llama-3.3-70b"
+    planning_model: "deepseek-r1"
+    zero_retention: true
+    strip_comments: true
+    redact_secrets: true
+    redact_pii: true
+    max_tokens: 4096
+    temperature: 0.2
+
+governance:
+  anti_abuse:
+    daily_token_budget_per_repo: 250000
+    daily_proposals_max: 5
+    min_cooldown_minutes: 60
+    min_semantic_delta_score: 0.45
+    block_cosmetic_only: true
+    proof_of_tests_required: true
+    enforce_rejection_learning: true
+
+cadence:
+  cron_schedule: "0 9 * * *" # Daily feature sprint dash at 09:00 AM
+  auto_awaken_snoozed: true
+  batch_proposal_count: 3
+
+telegram:
+  bot_token: "${TELEGRAM_BOT_TOKEN}"
+  admin_chat_id: "${TELEGRAM_ADMIN_CHAT_ID}"
+  interactive_buttons: true
+  send_diff_snippets: true
+  max_diff_lines: 40
+  push_on_dash: true
+  push_on_sandbox_pass: true
+
+mcp:
+  enabled: true
+  transport: "sse" # or "stdio"
+  host: "0.0.0.0"
+  port: 18881
+  auth_token: "${MCP_SECRET_TOKEN}"
+
+patterns:
+  telemetry:
+    enabled: true
+    max_trace_history: 100
+    auto_prioritize_crashes: true
+  profiler:
+    enabled: true
+    slow_query_threshold_ms: 250
+    latency_p95_threshold_ms: 500
+  feedback_sync:
+    enabled: true
+    sync_interval_minutes: 30
+  preferences:
+    enabled: true
+    decay_half_life_days: 90
+  webhooks:
+    enabled: true
+    secret: "webhook_signature_secret"
+    listen_path: "/api/v1/webhooks/ingest"
+
+repositories:
+  - id: "sample-forked-repo"
+    name: "Sample Forked Service"
+    path: "./examples/sample_forked_repo"
+    default_branch: "main"
+    test_command: "python -m unittest discover tests"
+    auto_propose_bugs: true
+    auto_propose_features: true

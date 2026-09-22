@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hermes Recursive Agentic CI | Dashboard</title>
+  <link rel="stylesheet" href="/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="bg-zinc-950 text-zinc-100 font-sans antialiased min-h-screen">
+  <!-- Top Navigation -->
+  <header class="border-b border-zinc-800 bg-zinc-900/60 backdrop-blur sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 rounded-lg bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 font-mono font-bold">
+          Ψ
+        </div>
+        <div>
+          <span class="font-bold tracking-tight text-white">HERMES</span>
+          <span class="text-xs ml-2 px-2 py-0.5 rounded bg-zinc-800 border border-zinc-700 text-zinc-300 font-mono">Recursive CI (HITL)</span>
+        </div>
+      </div>
+      <div class="flex items-center gap-4 text-xs font-mono">
+        <div class="flex items-center gap-2 bg-zinc-900 px-3 py-1.5 rounded-full border border-zinc-800">
+          <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+          <span class="text-zinc-400">Venice AI:</span>
+          <span class="text-emerald-400">Zero-Data Retention</span>
+        </div>
+        <div class="flex items-center gap-2 bg-zinc-900 px-3 py-1.5 rounded-full border border-zinc-800">
+          <span class="text-zinc-400">Daily Quota:</span>
+          <span id="header-tokens" class="text-white">--</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="max-w-7xl mx-auto px-6 py-8 space-y-8">
+    
+    <!-- Top Telemetry & Health Ribbon -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div class="p-5 bg-zinc-900/50 border border-zinc-800 rounded-xl">
+        <div class="text-xs uppercase text-zinc-500 font-mono font-semibold">Active Repositories</div>
+        <div class="mt-2 text-2xl font-bold font-mono text-white" id="stat-repo-count">0</div>
+        <div class="mt-1 text-xs text-zinc-400">Tracked under recursive CI</div>
+      </div>
+      <div class="p-5 bg-zinc-900/50 border border-zinc-800 rounded-xl">
+        <div class="text-xs uppercase text-zinc-500 font-mono font-semibold">Pending Review</div>
+        <div class="mt-2 text-2xl font-bold font-mono text-amber-400" id="stat-pending-count">0</div>
+        <div class="mt-1 text-xs text-zinc-400">Awaiting Human Gatekeeper</div>
+      </div>
+      <div class="p-5 bg-zinc-900/50 border border-zinc-800 rounded-xl">
+        <div class="text-xs uppercase text-zinc-500 font-mono font-semibold">Verified in Sandbox</div>
+        <div class="mt-2 text-2xl font-bold font-mono text-emerald-400" id="stat-verified-count">0</div>
+        <div class="mt-1 text-xs text-zinc-400">Tests 100% Passed</div>
+      </div>
+      <div class="p-5 bg-zinc-900/50 border border-zinc-800 rounded-xl">
+        <div class="text-xs uppercase text-zinc-500 font-mono font-semibold">Snoozed Features</div>
+        <div class="mt-2 text-2xl font-bold font-mono text-indigo-400" id="stat-snoozed-count">0</div>
+        <div class="mt-1 text-xs text-zinc-400">Delayed by maintainer</div>
+      </div>
+    </div>
+
+    <!-- Repository Management Section -->
+    <section class="space-y-4">
+      <div class="flex items-center justify-between">
+        <div>
+          <h2 class="text-lg font-bold text-white tracking-tight">Target Repositories</h2>
+          <p class="text-xs text-zinc-400">Repositories monitored for recursive improvements and mutation testing</p>
+        </div>
+        <button id="btn-show-add-repo" class="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-xs font-mono rounded-lg border border-zinc-700 text-white transition">
+          + Target New Repo
+        </button>
+      </div>
+
+      <!-- Add Repo Form (Hidden by default) -->
+      <div id="add-repo-form" class="hidden p-4 bg-zinc-900 border border-zinc-800 rounded-xl space-y-3">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+          <div>
+            <label class="block text-xs font-mono text-zinc-400 mb-1">Repo ID</label>
+            <input type="text" id="input-repo-id" placeholder="my-service" class="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-1.5 text-xs text-white">
+          </div>
+          <div>
+            <label class="block text-xs font-mono text-zinc-400 mb-1">Name</label>
+            <input type="text" id="input-repo-name" placeholder="My Production Service" class="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-1.5 text-xs text-white">
+          </div>
+          <div>
+            <label class="block text-xs font-mono text-zinc-400 mb-1">Filesystem Path</label>
+            <input type="text" id="input-repo-path" placeholder="./examples/sample_forked_repo" class="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-1.5 text-xs text-white">
+          </div>
+        </div>
+        <div class="flex justify-end gap-2">
+          <button id="btn-cancel-repo" class="px-3 py-1 text-xs text-zinc-400 hover:text-white">Cancel</button>
+          <button id="btn-submit-repo" class="px-4 py-1 bg-emerald-600 hover:bg-emerald-500 text-xs text-white rounded font-mono">Register & Audit</button>
+        </div>
+      </div>
+
+      <div id="repo-list" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <!-- Dynamic repo cards will populate here -->
+      </div>
+    </section>
+
+    <!-- Proposals & Human-in-the-Loop Management Section -->
+    <section class="space-y-4">
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h2 class="text-lg font-bold text-white tracking-tight">Recursive Feature & Mutation Proposals</h2>
+          <p class="text-xs text-zinc-400">Approve, reject with feedback, or snooze automated code improvements</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <select id="filter-status" class="bg-zinc-900 border border-zinc-800 text-xs text-zinc-300 rounded-lg px-3 py-1.5 font-mono">
+            <option value="">All Statuses</option>
+            <option value="PROPOSED">Proposed (Pending Gate)</option>
+            <option value="APPROVED">Approved / In Sandbox</option>
+            <option value="TESTS_PASSED">Verified & Passed</option>
+            <option value="SNOOZED">Snoozed</option>
+            <option value="REJECTED">Rejected</option>
+          </select>
+          <button id="btn-trigger-dash" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-mono text-xs rounded-lg flex items-center gap-1.5 transition">
+            <span>⚡ Trigger Sprint Dash</span>
+          </button>
+        </div>
+      </div>
+
+      <div id="proposals-list" class="space-y-3">
+        <!-- Dynamic proposal cards will populate here -->
+      </div>
+    </section>
+
+    <!-- Model Context Protocol & Telegram Pairing Section -->
+    <section class="p-6 bg-zinc-900/40 border border-zinc-800 rounded-2xl space-y-4">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-8 h-8 rounded-lg bg-indigo-500/20 border border-indigo-500/40 flex items-center justify-center text-indigo-400 font-mono font-bold text-xs">
+            MCP
+          </div>
+          <div>
+            <h3 class="text-sm font-bold text-white">Model Context Protocol (MCP) Server & Telegram Bridge</h3>
+            <p class="text-xs text-zinc-400">Available to Hermes Agent, Claude, and Telegram Bot with interactive inline actions</p>
+          </div>
+        </div>
+        <div class="text-xs font-mono text-zinc-400">Endpoint: <code class="text-zinc-200 bg-zinc-800 px-2 py-0.5 rounded">/mcp</code></div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs font-mono">
+        <div class="p-3 bg-zinc-950 border border-zinc-800/80 rounded-lg">
+          <div class="text-zinc-500 mb-1">Telegram Pairing Command</div>
+          <code class="text-emerald-400">/pair_mcp http://localhost:18880</code>
+        </div>
+        <div class="p-3 bg-zinc-950 border border-zinc-800/80 rounded-lg">
+          <div class="text-zinc-500 mb-1">Feature Dash Command</div>
+          <code class="text-indigo-400">/dash sample-forked-repo</code>
+        </div>
+        <div class="p-3 bg-zinc-950 border border-zinc-800/80 rounded-lg">
+          <div class="text-zinc-500 mb-1">Live Status Command</div>
+          <code class="text-amber-400">/status</code>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

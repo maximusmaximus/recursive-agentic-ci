@@ -1,0 +1,32 @@
+{
+  "crashes": [
+    {
+      "timestamp": "2026-09-21T14:32:10Z",
+      "exception_type": "ZeroDivisionError",
+      "message": "division by zero",
+      "module": "calculator.py",
+      "function": "compute",
+      "line_number": 15,
+      "frequency": 47,
+      "stack_trace": "Traceback (most recent call last):\n  File \"app.py\", line 15, in handle_request\n    res = self.calc.compute(op, a, b)\n  File \"calculator.py\", line 15, in compute\n    return a / b\nZeroDivisionError: division by zero"
+    }
+  ],
+  "metrics": [
+    {
+      "endpoint": "/api/users/find_by_email",
+      "p50_latency_ms": 12.4,
+      "p95_latency_ms": 380.0,
+      "p99_latency_ms": 940.5,
+      "throughput_rps": 120,
+      "bottleneck_reason": "Linear scan across memory collection without email index"
+    }
+  ],
+  "user_feedback": [
+    {
+      "id": "FB-101",
+      "author": "dev_lead",
+      "text": "Please add a prime factorization method to Calculator and guard division by zero with custom exception",
+      "tag": "feature_request"
+    }
+  ]
+}

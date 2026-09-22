@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "recursive-agentic-ci"
+version = "1.0.0"
+description = "Generalized Scaffolding for Recursive Continuous Integration with Human-and-Agent-in-the-Loop (HITL), Venice AI Privacy, Hermes Agent, and Telegram"
+authors = [{ name = "Autonomous Systems Team" }]
+readme = "README.md"
+requires-python = ">=3.7"
+dependencies = [
+    "requests>=2.28.0",
+    "urllib3>=1.26.0"
+]
+
+[project.optional-dependencies]
+full = [
+    "fastapi>=0.100.0",
+    "uvicorn>=0.22.0",
+    "websockets>=11.0",
+    "python-telegram-bot>=20.0",
+    "apscheduler>=3.10.0",
+    "rich>=13.0.0",
+    "pydantic>=2.0.0",
+    "pytest>=7.0.0"
+]
+dev = [
+    "pytest>=7.0.0",
+    "ruff>=0.1.0"
+]
+
+[project.scripts]
+recursive-ci = "src.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"

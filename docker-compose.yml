@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  recursive-ci-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: recursive_ci_server
+    restart: unless-stopped
+    ports:
+      - "18880:18880"
+      - "18881:18881"
+    environment:
+      - VENICE_API_KEY=${VENICE_API_KEY}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_ADMIN_CHAT_ID=${TELEGRAM_ADMIN_CHAT_ID}
+      - SERVER_HOST=0.0.0.0
+      - SERVER_PORT=18880
+      - MCP_HOST=0.0.0.0
+      - MCP_PORT=18881
+      - DATABASE_PATH=/app/data/recursive_ci.db
+    volumes:
+      - ./data:/app/data
+      - ./sandboxes:/app/sandboxes
+      - ./examples:/app/examples
+    command: ["server", "--host", "0.0.0.0", "--port", "18880"]
+
+  hermes-cadence-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: hermes_cadence_worker
+    restart: unless-stopped
+    depends_on:
+      - recursive-ci-server
+    environment:
+      - VENICE_API_KEY=${VENICE_API_KEY}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_ADMIN_CHAT_ID=${TELEGRAM_ADMIN_CHAT_ID}
+      - DATABASE_PATH=/app/data/recursive_ci.db
+    volumes:
+      - ./data:/app/data
+      - ./sandboxes:/app/sandboxes
+      - ./examples:/app/examples
+    command: ["worker", "--cadence"]
