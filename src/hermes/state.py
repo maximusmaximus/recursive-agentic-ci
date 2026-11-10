@@ -34,6 +34,7 @@ class HermesStateManager:
                     default_branch TEXT DEFAULT 'main',
                     test_command TEXT DEFAULT 'python -m unittest discover tests',
                     health_score REAL DEFAULT 80.0,
+                    skill_affinities TEXT DEFAULT '["recursive-ci"]',
                     status TEXT DEFAULT 'ACTIVE',
                     registered_at REAL NOT NULL
                 );
@@ -46,6 +47,11 @@ class HermesStateManager:
                     rationale TEXT,
                     proposed_diff_summary TEXT,
                     affected_files TEXT,
+                    clarifying_questions TEXT DEFAULT '[]',
+                    question_answers TEXT DEFAULT '{}',
+                    candidate_patches TEXT DEFAULT '{}',
+                    branch_name TEXT,
+                    commit_sha TEXT,
                     test_plan TEXT,
                     safety_score REAL DEFAULT 0.9,
                     semantic_delta_score REAL DEFAULT 0.5,
@@ -90,28 +96,76 @@ class HermesStateManager:
                     UNIQUE(module, function)
                 );
             """)
+            self._ensure_column(conn, "repositories", "skill_affinities", "TEXT DEFAULT '[\"recursive-ci\"]'")
+            self._ensure_column(conn, "proposals", "clarifying_questions", "TEXT DEFAULT '[]'")
+            self._ensure_column(conn, "proposals", "question_answers", "TEXT DEFAULT '{}'")
+            self._ensure_column(conn, "proposals", "candidate_patches", "TEXT DEFAULT '{}'")
+            self._ensure_column(conn, "proposals", "branch_name", "TEXT")
+            self._ensure_column(conn, "proposals", "commit_sha", "TEXT")
 
-    def register_repo(self, repo_id: str, name: str, path: str, default_branch: str = "main", test_command: str = "python -m unittest discover tests") -> Dict[str, Any]:
+    def _ensure_column(self, conn: sqlite3.Connection, table: str, column: str, col_def: str):
+        cols = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+        if column not in cols:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_def}")
+
+    def _deserialize_repo(self, row: sqlite3.Row) -> Dict[str, Any]:
+        item = dict(row)
+        try:
+            item["skill_affinities"] = json.loads(item.get("skill_affinities") or '["recursive-ci"]')
+        except Exception:
+            item["skill_affinities"] = ["recursive-ci"]
+        return item
+
+    def _deserialize_proposal(self, row: sqlite3.Row) -> Dict[str, Any]:
+        res = dict(row)
+        for field, fallback in (
+            ("affected_files", []),
+            ("clarifying_questions", []),
+            ("question_answers", {}),
+            ("candidate_patches", {}),
+        ):
+            try:
+                res[field] = json.loads(res.get(field) or json.dumps(fallback))
+            except Exception:
+                res[field] = fallback
+        return res
+
+    def register_repo(
+        self,
+        repo_id: str,
+        name: str,
+        path: str,
+        default_branch: str = "main",
+        test_command: str = "python -m unittest discover tests",
+        skill_affinities: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        affinities_json = json.dumps(skill_affinities or ["recursive-ci"])
         with self._get_connection() as conn:
             conn.execute("""
-                INSERT OR REPLACE INTO repositories (id, name, path, default_branch, test_command, registered_at)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (repo_id, name, path, default_branch, test_command, time.time()))
+                INSERT OR REPLACE INTO repositories (id, name, path, default_branch, test_command, skill_affinities, registered_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (repo_id, name, path, default_branch, test_command, affinities_json, time.time()))
         return self.get_repo(repo_id)
 
     def get_repo(self, repo_id: str) -> Optional[Dict[str, Any]]:
         with self._get_connection() as conn:
             row = conn.execute("SELECT * FROM repositories WHERE id = ?", (repo_id,)).fetchone()
-            return dict(row) if row else None
+            return self._deserialize_repo(row) if row else None
 
     def list_repos(self) -> List[Dict[str, Any]]:
         with self._get_connection() as conn:
             rows = conn.execute("SELECT * FROM repositories ORDER BY registered_at DESC").fetchall()
-            return [dict(r) for r in rows]
+            return [self._deserialize_repo(r) for r in rows]
 
-    def update_repo_health(self, repo_id: str, health_score: float):
+    def update_repo_health(self, repo_id: str, health_score: float, skill_affinities: Optional[List[str]] = None):
         with self._get_connection() as conn:
-            conn.execute("UPDATE repositories SET health_score = ? WHERE id = ?", (health_score, repo_id))
+            if skill_affinities is not None:
+                conn.execute(
+                    "UPDATE repositories SET health_score = ?, skill_affinities = ? WHERE id = ?",
+                    (health_score, json.dumps(skill_affinities), repo_id),
+                )
+            else:
+                conn.execute("UPDATE repositories SET health_score = ? WHERE id = ?", (health_score, repo_id))
 
     def save_proposal(self, proposal: Dict[str, Any]) -> Dict[str, Any]:
         now = time.time()
@@ -119,9 +173,10 @@ class HermesStateManager:
             conn.execute("""
                 INSERT OR REPLACE INTO proposals (
                     id, repo_id, type, title, rationale, proposed_diff_summary,
-                    affected_files, test_plan, safety_score, semantic_delta_score,
+                    affected_files, clarifying_questions, question_answers, candidate_patches,
+                    branch_name, commit_sha, test_plan, safety_score, semantic_delta_score,
                     status, snooze_until, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 proposal["id"],
                 proposal["repo_id"],
@@ -130,6 +185,11 @@ class HermesStateManager:
                 proposal.get("rationale", ""),
                 proposal.get("proposed_diff_summary", ""),
                 json.dumps(proposal.get("affected_files", [])),
+                json.dumps(proposal.get("clarifying_questions", [])),
+                json.dumps(proposal.get("question_answers", {})),
+                json.dumps(proposal.get("candidate_patches", {})),
+                proposal.get("branch_name"),
+                proposal.get("commit_sha"),
                 proposal.get("test_plan", ""),
                 proposal.get("safety_score", 0.9),
                 proposal.get("semantic_delta_score", 0.5),
@@ -145,12 +205,7 @@ class HermesStateManager:
             row = conn.execute("SELECT * FROM proposals WHERE id = ?", (proposal_id,)).fetchone()
             if not row:
                 return None
-            res = dict(row)
-            try:
-                res["affected_files"] = json.loads(res["affected_files"])
-            except Exception:
-                res["affected_files"] = []
-            return res
+            return self._deserialize_proposal(row)
 
     def list_proposals(self, repo_id: Optional[str] = None, status: Optional[str] = None) -> List[Dict[str, Any]]:
         query = "SELECT * FROM proposals WHERE 1=1"
@@ -165,15 +220,35 @@ class HermesStateManager:
 
         with self._get_connection() as conn:
             rows = conn.execute(query, params).fetchall()
-            results = []
-            for r in rows:
-                item = dict(r)
-                try:
-                    item["affected_files"] = json.loads(item["affected_files"])
-                except Exception:
-                    item["affected_files"] = []
-                results.append(item)
-            return results
+            return [self._deserialize_proposal(r) for r in rows]
+
+    def save_proposal_answers(self, proposal_id: str, answers: Dict[str, str]):
+        now = time.time()
+        with self._get_connection() as conn:
+            conn.execute(
+                "UPDATE proposals SET question_answers = ?, updated_at = ? WHERE id = ?",
+                (json.dumps(answers), now, proposal_id),
+            )
+
+    def save_candidate_patches(self, proposal_id: str, patch_files: Dict[str, str]):
+        now = time.time()
+        with self._get_connection() as conn:
+            conn.execute(
+                "UPDATE proposals SET candidate_patches = ?, updated_at = ? WHERE id = ?",
+                (json.dumps(patch_files), now, proposal_id),
+            )
+
+    def mark_proposal_merged(self, proposal_id: str, branch_name: str, commit_sha: Optional[str] = None, notes: Optional[str] = None):
+        now = time.time()
+        with self._get_connection() as conn:
+            conn.execute(
+                """
+                UPDATE proposals
+                SET status = 'MERGED', branch_name = ?, commit_sha = ?, maintainer_notes = COALESCE(?, maintainer_notes), updated_at = ?
+                WHERE id = ?
+                """,
+                (branch_name, commit_sha, notes, now, proposal_id),
+            )
 
     def approve_proposal(self, proposal_id: str, user_id: str = "telegram_user", notes: Optional[str] = None) -> bool:
         now = time.time()
@@ -181,7 +256,7 @@ class HermesStateManager:
             cur = conn.execute("""
                 UPDATE proposals 
                 SET status = 'APPROVED', maintainer_notes = ?, updated_at = ?
-                WHERE id = ? AND status IN ('PROPOSED', 'SNOOZED')
+                WHERE id = ? AND status IN ('PROPOSED', 'SNOOZED', 'AWAITING_ANSWERS')
             """, (notes or "", now, proposal_id))
             if cur.rowcount > 0:
                 p = self.get_proposal(proposal_id)
@@ -198,7 +273,7 @@ class HermesStateManager:
             cur = conn.execute("""
                 UPDATE proposals 
                 SET status = 'REJECTED', rejection_reason = ?, updated_at = ?
-                WHERE id = ? AND status IN ('PROPOSED', 'SNOOZED')
+                WHERE id = ? AND status IN ('PROPOSED', 'SNOOZED', 'AWAITING_ANSWERS')
             """, (rationale, now, proposal_id))
             if cur.rowcount > 0:
                 p = self.get_proposal(proposal_id)

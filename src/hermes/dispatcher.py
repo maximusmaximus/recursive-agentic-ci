@@ -20,20 +20,25 @@ class RepoGenome:
         has_complex_algorithms = False
 
         for root, dirs, files in os.walk(self.repo_path):
-            if any(skip in root for skip in {".git", "__pycache__", "venv", "node_modules"}):
-                continue
+            dirs[:] = [d for d in dirs if d not in {".git", "__pycache__", "venv", ".venv", "node_modules", "dist", "build"}]
+            rel_dir_parts = {p.lower() for p in os.path.relpath(root, self.repo_path).replace("\\", "/").split("/")}
             for f in files:
-                rel = os.path.join(root, f).lower()
-                if "test" in rel or "spec" in rel:
+                fname_lower = f.lower()
+                stem_lower, ext_lower = os.path.splitext(fname_lower)
+                if (
+                    rel_dir_parts & {"test", "tests", "__tests__", "spec", "specs"}
+                    or stem_lower.startswith("test_")
+                    or stem_lower.endswith(("_test", ".test", ".spec"))
+                ):
                     has_tests = True
 
-                if f.endswith(".py"):
+                if ext_lower in {".py", ".js", ".mjs", ".ts", ".tsx", ".go", ".rs"}:
                     try:
                         with open(os.path.join(root, f), "r", encoding="utf-8", errors="replace") as fp:
                             content = fp.read()
-                            if any(k in content for k in ["route(", "@app.", "handle_request", "endpoint", "FastAPI", "Flask", "bottle"]):
+                            if any(k in content for k in ["route(", "@app.", "handle_request", "endpoint", "FastAPI", "Flask", "bottle", "express(", "Hono", "fetch("]):
                                 has_web_routes = True
-                            if any(k in content for k in ["sentry", "logging", "telemetry", "traceback", "datadog"]):
+                            if any(k in content for k in ["sentry", "logging", "telemetry", "traceback", "datadog", "console.error"]):
                                 has_logging_or_telemetry = True
                             if any(k in content for k in ["for ", "while ", "def factorize", "def is_prime", "search", "sort"]):
                                 has_complex_algorithms = True
@@ -128,6 +133,16 @@ class DynamicSkillDispatcher:
     def evict_all(self):
         """Restores context to bare baseline."""
         self._mounted_skills.clear()
+
+    def estimate_tokens_saved(self, mounted_skills: List[str]) -> int:
+        """Compute context tokens saved by JIT-mounting only active skills vs full catalog."""
+        total_weight = sum(spec["token_weight"] for spec in self.SKILL_INDEX.values())
+        mounted_weight = sum(
+            self.SKILL_INDEX[s]["token_weight"]
+            for s in mounted_skills
+            if s in self.SKILL_INDEX
+        )
+        return max(0, total_weight - mounted_weight)
 
     @property
     def mounted_skills(self) -> List[str]:

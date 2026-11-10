@@ -39,12 +39,38 @@ class MCPToolRegistry:
             },
             {
                 "name": "approve_proposal",
-                "description": "Approves a proposal and triggers isolated sandboxed test execution.",
+                "description": "Approves a proposal (pausing at AWAITING_ANSWERS if clarifications are needed) and triggers isolated sandboxed test execution.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
                         "proposal_id": {"type": "string", "description": "Identifier of the proposal to approve."},
                         "notes": {"type": "string", "description": "Optional maintainer implementation guidance."}
+                    },
+                    "required": ["proposal_id"]
+                }
+            },
+            {
+                "name": "answer_proposal_questions",
+                "description": "Submits maintainer answers to clarifying questions on a proposal and resumes sandbox execution.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "proposal_id": {"type": "string", "description": "Proposal ID awaiting clarification."},
+                        "answers": {
+                            "description": "Object mapping question->answer, array of answers, or newline-delimited string."
+                        }
+                    },
+                    "required": ["proposal_id", "answers"]
+                }
+            },
+            {
+                "name": "merge_proposal",
+                "description": "Commits a sandbox-verified (TESTS_PASSED) proposal onto a dedicated git branch (rec-ci/<id>) and optionally fast-forward merges.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "proposal_id": {"type": "string", "description": "Verified proposal ID."},
+                        "merge_to_base": {"type": "boolean", "description": "Whether to fast-forward merge into default branch if clean."}
                     },
                     "required": ["proposal_id"]
                 }
@@ -111,6 +137,16 @@ class MCPToolRegistry:
             proposal_id = arguments["proposal_id"]
             notes = arguments.get("notes")
             return self.agent.approve_and_implement(proposal_id, maintainer_notes=notes)
+
+        elif name == "answer_proposal_questions":
+            proposal_id = arguments["proposal_id"]
+            answers = arguments["answers"]
+            return self.agent.answer_questions(proposal_id, answers=answers)
+
+        elif name == "merge_proposal":
+            proposal_id = arguments["proposal_id"]
+            merge_to_base = bool(arguments.get("merge_to_base", False))
+            return self.agent.merge_proposal(proposal_id, merge_to_base=merge_to_base)
 
         elif name == "reject_proposal":
             proposal_id = arguments["proposal_id"]

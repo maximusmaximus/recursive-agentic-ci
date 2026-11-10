@@ -21,6 +21,7 @@ class ResourceGovernor:
         self.max_concurrent_sandboxes = max_concurrent_sandboxes
         self._state_manager = state_manager
         self._tokens_consumed_today = 0
+        self._context_tokens_saved = 0
         self._active_sandboxes = 0
         self._last_reset = time.time()
 
@@ -38,6 +39,9 @@ class ResourceGovernor:
 
     def record_tokens(self, count: int):
         self._tokens_consumed_today += count
+
+    def record_context_savings(self, tokens_saved: int):
+        self._context_tokens_saved += max(0, int(tokens_saved))
 
     def get_resource_snapshot(self) -> Dict[str, Any]:
         """Return system and quota telemetry."""
@@ -61,6 +65,7 @@ class ResourceGovernor:
             "tokens_consumed_today": consumed_today,
             "token_budget_remaining": max(0, self.daily_token_quota - consumed_today),
             "quota_utilization_pct": round((consumed_today / max(1, self.daily_token_quota)) * 100, 1),
+            "context_tokens_saved": self._context_tokens_saved,
             "active_sandboxes": self._active_sandboxes,
             "max_concurrent_sandboxes": self.max_concurrent_sandboxes,
             "disk_free_gb": disk_free_gb,

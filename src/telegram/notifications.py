@@ -19,12 +19,19 @@ def format_proposal_message(proposal: Dict[str, Any]) -> str:
     if ptype == "BUG_FIX":
         icon = "🚑"
 
+    questions = proposal.get("clarifying_questions") or []
+    qa_block = ""
+    if questions:
+        q_lines = "\n".join(f"  {idx}. {q}" for idx, q in enumerate(questions, 1))
+        qa_block = f"*Clarifications Requested Before Sandbox Run:*\n{q_lines}\n\n"
+
     return (
         f"{icon} *[Hermes Recursive CI] {ptype} PROPOSED*\n\n"
         f"*Title:* {title}\n"
         f"*Repository:* `{repo}`\n"
         f"*Proposal ID:* `{prop_id}`\n\n"
         f"*Why this was proposed:*\n{rationale}\n\n"
+        f"{qa_block}"
         f"🔒 *Privacy Guarantee:* Venice AI (Zero-Data Retention)\n"
         f"🛡 *Safety Score:* `{safety}%` | *Delta Score:* `{delta}`\n\n"
         f"_Tap a button below to approve for isolated CI testing, reject with feedback, or snooze._"

@@ -49,3 +49,14 @@ def build_mcp_tools_keyboard(tools: List[Dict[str, Any]]) -> Dict[str, Any]:
             {"text": f"🛠 {name}", "callback_data": f"mcp_call:{name}"}
         ])
     return {"inline_keyboard": keyboard_rows}
+
+
+def build_merge_gate_keyboard(proposal_id: str) -> Dict[str, Any]:
+    """Inline action button to commit/merge a sandbox-verified proposal."""
+    return {
+        "inline_keyboard": [
+            [
+                {"text": "🚀 Create Verified Branch (rec-ci)", "callback_data": f"merge:{proposal_id}"}
+            ]
+        ]
+    }

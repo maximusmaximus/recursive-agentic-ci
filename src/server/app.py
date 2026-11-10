@@ -7,10 +7,17 @@ import json
 import os
 import urllib.parse
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from socketserver import ThreadingMixIn
 from typing import Dict, Any, Optional
 
 from ..hermes.agent import HermesCIAgent
 from ..mcp.server import MCPServer
+
+
+class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
+    """Multi-threaded HTTP server preventing sandbox runs from blocking dashboard/MCP polling."""
+    daemon_threads = True
+    allow_reuse_address = True
 
 class RecursiveCIHandler(BaseHTTPRequestHandler):
     agent: Optional[HermesCIAgent] = None
@@ -82,6 +89,15 @@ class RecursiveCIHandler(BaseHTTPRequestHandler):
             tools = self.mcp_server.registry.get_tool_definitions()
             self._send_json(200, {"success": True, "tools": tools})
 
+        elif path == "/api/v1/skills":
+            snap = self.agent.resources.get_resource_snapshot()
+            self._send_json(200, {
+                "success": True,
+                "micro_catalog": self.agent.dispatcher.get_micro_catalog(),
+                "mounted_skills": self.agent.dispatcher.mounted_skills,
+                "context_tokens_saved": snap.get("context_tokens_saved", 0),
+            })
+
         else:
             self._send_json(404, {"error": f"Endpoint not found: {path}"})
 
@@ -140,7 +156,20 @@ class RecursiveCIHandler(BaseHTTPRequestHandler):
         elif path.startswith("/api/v1/proposals/") and path.endswith("/approve"):
             prop_id = path.split("/")[4]
             notes = body.get("notes")
-            res = self.agent.approve_and_implement(prop_id, maintainer_notes=notes)
+            answers = body.get("answers")
+            res = self.agent.approve_and_implement(prop_id, maintainer_notes=notes, answers=answers)
+            self._send_json(200, res)
+
+        elif path.startswith("/api/v1/proposals/") and path.endswith("/answer"):
+            prop_id = path.split("/")[4]
+            answers = body.get("answers", {})
+            res = self.agent.answer_questions(prop_id, answers=answers)
+            self._send_json(200, res)
+
+        elif path.startswith("/api/v1/proposals/") and path.endswith("/merge"):
+            prop_id = path.split("/")[4]
+            merge_to_base = bool(body.get("merge_to_base", False))
+            res = self.agent.merge_proposal(prop_id, merge_to_base=merge_to_base)
             self._send_json(200, res)
 
         elif path.startswith("/api/v1/proposals/") and path.endswith("/reject"):
@@ -171,7 +200,7 @@ def run_server(host: str = "0.0.0.0", port: int = 18880, agent: Optional[HermesC
     RecursiveCIHandler.mcp_server = mcp_instance
 
     server_address = (host, port)
-    httpd = HTTPServer(server_address, RecursiveCIHandler)
+    httpd = ThreadedHTTPServer(server_address, RecursiveCIHandler)
     print(f"[*] Hermes Recursive CI Management Server running at http://{host}:{port}")
     try:
         httpd.serve_forever()

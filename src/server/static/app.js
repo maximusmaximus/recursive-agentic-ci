@@ -167,8 +167,8 @@ async function fetchProposals() {
 function updateProposalStats(proposals) {
   let pending = 0, verified = 0, snoozed = 0;
   proposals.forEach(p => {
-    if (p.status === 'PROPOSED') pending++;
-    else if (p.status === 'TESTS_PASSED') verified++;
+    if (p.status === 'PROPOSED' || p.status === 'AWAITING_ANSWERS') pending++;
+    else if (p.status === 'TESTS_PASSED' || p.status === 'MERGED') verified++;
     else if (p.status === 'SNOOZED') snoozed++;
   });
   document.getElementById('stat-pending-count').innerText = pending;
@@ -226,8 +226,18 @@ function renderProposals(proposals) {
               ❌ Reject
             </button>
           ` : ''}
+          ${prop.status === 'AWAITING_ANSWERS' ? `
+            <button onclick="answerProposal('${prop.id}')" class="px-3 py-1 bg-amber-600 hover:bg-amber-500 text-white font-mono text-xs rounded transition">
+              💬 Answer Clarifications
+            </button>
+          ` : ''}
           ${prop.status === 'TESTS_PASSED' ? `
-            <span class="text-xs font-mono text-emerald-400">✔ Ready for Mainline Merge Gate</span>
+            <button onclick="mergeProposal('${prop.id}')" class="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-mono text-xs rounded transition">
+              🚀 Create Branch / Merge
+            </button>
+          ` : ''}
+          ${prop.status === 'MERGED' ? `
+            <span class="text-xs font-mono text-emerald-400">✔ Branch ${prop.branch_name || 'rec-ci'} (${prop.commit_sha || 'merged'})</span>
           ` : ''}
         </div>
       </div>
@@ -244,9 +254,38 @@ async function approveProposal(id) {
     body: JSON.stringify({ notes: notes || '' })
   });
   const data = await res.json();
-  alert(data.message || 'Execution finished');
+  if (data.status === 'AWAITING_ANSWERS' && Array.isArray(data.clarifying_questions)) {
+    alert('Clarification required:\n- ' + data.clarifying_questions.join('\n- '));
+  } else {
+    alert(data.message || 'Execution finished');
+  }
   fetchProposals();
   fetchResources();
+}
+
+async function answerProposal(id) {
+  const answers = prompt('Enter your answers to the clarifying questions (one per line):');
+  if (!answers) return;
+  const res = await fetch(`/api/v1/proposals/${id}/answer`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ answers })
+  });
+  const data = await res.json();
+  alert(data.message || 'Answers submitted');
+  fetchProposals();
+  fetchResources();
+}
+
+async function mergeProposal(id) {
+  const res = await fetch(`/api/v1/proposals/${id}/merge`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ merge_to_base: false })
+  });
+  const data = await res.json();
+  alert(data.message || 'Branch created');
+  fetchProposals();
 }
 
 async function rejectProposal(id) {
