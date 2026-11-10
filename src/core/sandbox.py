@@ -95,7 +95,7 @@ class SandboxRunner:
                 pass
 
     def _copy_repo_contents(self, src: str, dst: str):
-        skip_dirs = {".git", "__pycache__", "venv", ".venv"}
+        skip_dirs = {".git", "__pycache__", "venv", ".venv", "node_modules"}
         for item in os.listdir(src):
             if item in skip_dirs:
                 continue
@@ -105,3 +105,135 @@ class SandboxRunner:
                 shutil.copytree(s, d, ignore=shutil.ignore_patterns("*.pyc", "__pycache__"))
             else:
                 shutil.copy2(s, d)
+
+    def commit_verified_branch(
+        self,
+        repo_path: str,
+        branch_name: str,
+        patch_files: Dict[str, str],
+        commit_message: str,
+        base_branch: str = "main",
+        merge_to_base: bool = False,
+    ) -> Dict[str, Any]:
+        """Materialize sandbox-verified patches onto an isolated git branch (or non-git directory)."""
+        abs_repo = os.path.abspath(repo_path)
+        git_dir = os.path.join(abs_repo, ".git")
+
+        if not os.path.exists(git_dir):
+            for rel_path, content in patch_files.items():
+                dest = os.path.join(abs_repo, rel_path)
+                os.makedirs(os.path.dirname(dest), exist_ok=True)
+                with open(dest, "w", encoding="utf-8") as f:
+                    f.write(content)
+            return {
+                "success": True,
+                "mode": "filesystem_apply",
+                "branch_name": branch_name,
+                "commit_sha": None,
+                "files_written": list(patch_files.keys()),
+            }
+
+        wt_dir = tempfile.mkdtemp(prefix="rec_ci_worktree_")
+        try:
+            # Resolve starting ref (base_branch if it exists, otherwise HEAD)
+            ref_check = subprocess.run(
+                ["git", "rev-parse", "--verify", base_branch],
+                cwd=abs_repo,
+                capture_output=True,
+                text=True,
+            )
+            start_ref = base_branch if ref_check.returncode == 0 else "HEAD"
+
+            wt_add = subprocess.run(
+                ["git", "worktree", "add", "-B", branch_name, wt_dir, start_ref],
+                cwd=abs_repo,
+                capture_output=True,
+                text=True,
+            )
+            if wt_add.returncode != 0:
+                return {
+                    "success": False,
+                    "error": f"git worktree add failed: {wt_add.stderr.strip()}",
+                }
+
+            for rel_path, content in patch_files.items():
+                dest = os.path.join(wt_dir, rel_path)
+                os.makedirs(os.path.dirname(dest), exist_ok=True)
+                with open(dest, "w", encoding="utf-8") as f:
+                    f.write(content)
+                subprocess.run(["git", "add", rel_path], cwd=wt_dir, check=True, capture_output=True)
+
+            diff_check = subprocess.run(
+                ["git", "diff", "--cached", "--quiet"],
+                cwd=wt_dir,
+                capture_output=True,
+            )
+            commit_sha: Optional[str] = None
+            if diff_check.returncode != 0:
+                commit_proc = subprocess.run(
+                    [
+                        "git",
+                        "-c", "user.name=Hermes Recursive CI",
+                        "-c", "user.email=hermes-ci@noreply.local",
+                        "commit",
+                        "-m", commit_message,
+                    ],
+                    cwd=wt_dir,
+                    capture_output=True,
+                    text=True,
+                )
+                if commit_proc.returncode != 0:
+                    return {
+                        "success": False,
+                        "error": f"git commit failed: {commit_proc.stderr.strip()}",
+                    }
+            sha_proc = subprocess.run(
+                ["git", "rev-parse", "--short", "HEAD"],
+                cwd=wt_dir,
+                capture_output=True,
+                text=True,
+            )
+            commit_sha = sha_proc.stdout.strip() or None
+
+            subprocess.run(["git", "worktree", "remove", "--force", wt_dir], cwd=abs_repo, capture_output=True)
+
+            merged_to_base = False
+            if merge_to_base:
+                cur_branch = subprocess.run(
+                    ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                    cwd=abs_repo,
+                    capture_output=True,
+                    text=True,
+                ).stdout.strip()
+                dirty = subprocess.run(
+                    ["git", "status", "--porcelain"],
+                    cwd=abs_repo,
+                    capture_output=True,
+                    text=True,
+                ).stdout.strip()
+                if cur_branch == base_branch and not dirty:
+                    m_proc = subprocess.run(
+                        [
+                            "git",
+                            "-c", "user.name=Hermes Recursive CI",
+                            "-c", "user.email=hermes-ci@noreply.local",
+                            "merge", "--ff-only", branch_name,
+                        ],
+                        cwd=abs_repo,
+                        capture_output=True,
+                        text=True,
+                    )
+                    merged_to_base = (m_proc.returncode == 0)
+
+            return {
+                "success": True,
+                "mode": "git_branch",
+                "branch_name": branch_name,
+                "commit_sha": commit_sha,
+                "merged_to_base": merged_to_base,
+                "files_written": list(patch_files.keys()),
+            }
+        finally:
+            if os.path.exists(wt_dir):
+                subprocess.run(["git", "worktree", "remove", "--force", wt_dir], cwd=abs_repo, capture_output=True)
+                shutil.rmtree(wt_dir, ignore_errors=True)

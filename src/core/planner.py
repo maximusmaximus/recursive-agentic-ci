@@ -83,6 +83,7 @@ class RecursivePlanner:
                 "rationale": plan.get("rationale"),
                 "proposed_diff_summary": plan.get("proposed_diff_summary"),
                 "affected_files": plan.get("affected_files", []),
+                "clarifying_questions": plan.get("clarifying_questions", []),
                 "test_plan": plan.get("test_plan"),
                 "safety_score": plan.get("safety_score", 0.9),
                 "semantic_delta_score": score,

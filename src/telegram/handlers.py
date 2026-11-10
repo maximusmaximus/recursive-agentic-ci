@@ -6,7 +6,12 @@ snooze duration selection, and MCP tool execution.
 from typing import Dict, Any, Optional, Tuple
 from ..hermes.agent import HermesCIAgent
 from ..mcp.bridge import TelegramMCPBridge
-from .keyboards import build_proposal_keyboard, build_snooze_menu_keyboard, build_mcp_tools_keyboard
+from .keyboards import (
+    build_proposal_keyboard,
+    build_snooze_menu_keyboard,
+    build_mcp_tools_keyboard,
+    build_merge_gate_keyboard,
+)
 from .notifications import format_proposal_message, format_sandbox_result_message, format_status_report_message
 
 class TelegramBotHandlers:
@@ -100,6 +105,12 @@ class TelegramBotHandlers:
                     f"_The agent has learned this constraint and will not propose similar patterns for this repository._"
                 ), None
 
+            if action == "awaiting_clarification_answers":
+                res = self.agent.answer_questions(prop_id, text, user_id=user_id)
+                proposal = self.agent.state.get_proposal(prop_id) or {"id": prop_id, "title": prop_id}
+                kb = build_merge_gate_keyboard(prop_id) if res.get("status") == "TESTS_PASSED" else None
+                return format_sandbox_result_message(proposal, res.get("ci_result", {})), kb
+
         return "Message received. Use buttons or type `/help` for commands.", None
 
     def handle_callback_query(self, user_id: str, callback_data: str) -> Tuple[str, Optional[Dict[str, Any]]]:
@@ -113,7 +124,41 @@ class TelegramBotHandlers:
             if not proposal:
                 return "Proposal not found.", None
             res = self.agent.approve_and_implement(prop_id, user_id)
-            return format_sandbox_result_message(proposal, res.get("ci_result", {})), None
+            if res.get("status") == "AWAITING_ANSWERS":
+                questions = res.get("clarifying_questions", [])
+                self._user_sessions[user_id] = {
+                    "action": "awaiting_clarification_answers",
+                    "proposal_id": prop_id,
+                }
+                q_text = "\n".join(f"{idx}. {q}" for idx, q in enumerate(questions, 1))
+                return (
+                    f"💬 *Clarification Needed Before Implementing `{prop_id}`:*\n\n"
+                    f"{q_text}\n\n"
+                    f"_Reply with your answers (one per line) and I will immediately execute the patch in an isolated sandbox._"
+                ), None
+            kb = build_merge_gate_keyboard(prop_id) if res.get("status") == "TESTS_PASSED" else None
+            return format_sandbox_result_message(proposal, res.get("ci_result", {})), kb
+
+        elif action == "merge":
+            prop_id = parts[1]
+            res = self.agent.merge_proposal(prop_id, user_id=user_id)
+            if res.get("success"):
+                sha_note = f" (`{res.get('commit_sha')}`)" if res.get("commit_sha") else ""
+                return f"🚀 *Proposal `{prop_id}` Committed!* Branch: `{res.get('branch_name')}`{sha_note}", None
+            return f"⚠️ Merge halted: {res.get('message')}", None
+
+        elif action == "status":
+            repos = self.agent.state.list_repos()
+            res = self.agent.resources.get_resource_snapshot()
+            pending = len(self.agent.state.list_proposals(status="PROPOSED"))
+            return format_status_report_message(repos, res, pending), None
+
+        elif action == "view":
+            prop_id = parts[1]
+            proposal = self.agent.state.get_proposal(prop_id)
+            if not proposal:
+                return "Proposal not found.", None
+            return format_proposal_message(proposal), build_proposal_keyboard(prop_id, proposal["repo_id"])
 
         elif action == "reject":
             prop_id = parts[1]

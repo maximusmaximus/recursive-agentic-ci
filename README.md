@@ -14,14 +14,15 @@ Hermes continuously audits your target codebases, formulates high-impact feature
 
 ## Key Highlights
 
-- 🔒 **Venice AI Privacy Boundary**: Complete local AST redaction, secret/PII scrubbers, and zero-data retention model routing.
-- ⚡ **Cadence Sprint Dashes**: Scheduled batch proposals ("Feature Dashes") containing both new capabilities and mutation resilience tests.
-- 📱 **Interactive Telegram Gatekeeper**: One-tap inline buttons (`[✅ Approve]`, `[❌ Reject + Rationale]`, `[⏳ Snooze +24h]`, `[🔍 Diff]`, `[📊 Status]`).
-- 🛑 **Anti-Gamification & Abuse Governance**: Strict token hard-caps, circuit breakers, and semantic delta value scoring to prevent vanity commit farming.
-- 🧪 **Hermetic Sandbox Worktrees**: All candidate patches are validated in isolated temporary environments; zero code enters mainline without a 100% test suite pass.
-- 🔌 **Model Context Protocol (MCP) Server**: Full JSON-RPC 2.0 tool suite ready for Hermes, Claude, and external AI agents.
-- 📊 **Real-time Web Management Dashboard**: Responsive dark-mode dashboard for monitoring repositories, diffs, and resource quotas.
-- 📥 **Patterned Data Ingestion**: Built-in modules for Sentry/OTel crash traces, API latency profiling, GitHub issue sync, and maintainer preference learning.
+- 🔒 **Venice AI ZDR & E2EE Enclave Privacy Boundary**: Local AST redaction, PoA/Venice/PEM/Bearer secret scrubbers, zero-data retention headers, and optional hardware-enclave `e2ee-*` model routing (`VENICE_E2EE=true`).
+- 🧬 **Polyglot AST Audit & `RepoGenome` JIT Skill Dispatch**: Static analysis across Python, TypeScript/JavaScript, Go, and Rust with event-driven Just-In-Time skill mounting & eviction to save context window tokens.
+- ⚡ **Cadence Sprint Dashes**: Scheduled batch proposals ("Feature Dashes") combining capability upgrades, coverage gap stubs, telemetry crash fixes, and mutation resilience probes.
+- 💬 **Interactive Telegram & Clarification Q&A Gate**: One-tap inline buttons (`[✅ Approve]`, `[❌ Reject + Rationale]`, `[⏳ Snooze +24h]`, `[🔍 Diff]`, `[🚀 Merge]`) plus automatic `AWAITING_ANSWERS` clarification gates before sandbox execution.
+- 🛑 **Anti-Gamification & Abuse Governance**: Cross-process SQLite WAL persistence for daily token caps, circuit breakers, and semantic delta value scoring to prevent vanity commit farming.
+- 🧪 **Hermetic Sandbox & Git Worktree Branches**: Candidate patches are verified in isolated scratch environments and materialized onto clean `rec-ci/<proposal_id>` git branches via `git worktree` only after 100% test suite pass.
+- 🔌 **Model Context Protocol (MCP) Server**: Full JSON-RPC 2.0 tool suite (`audit_repository`, `create_feature_dash`, `approve_proposal`, `answer_proposal_questions`, `merge_proposal`, `reject_proposal`, `snooze_proposal`, `ingest_telemetry`, `get_repo_health`).
+- 📊 **Threaded Real-time Web Dashboard**: Responsive dark-mode management UI backed by `ThreadedHTTPServer` for non-blocking repository, Q&A, diff, and quota control.
+- 📥 **Patterned Data Ingestion**: Built-in modules for Sentry/OTel crash traces, API latency profiling, GitHub issue sync, webhook HMAC verification, RBAC, and persistent maintainer preference learning.
 
 ---
 
