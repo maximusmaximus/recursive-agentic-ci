@@ -30,10 +30,10 @@ class HermesCIAgent:
     ):
         self.state = state_manager or HermesStateManager()
         self.privacy = privacy_proxy or VenicePrivacyProxy()
-        self.governance = governance or GovernanceEngine()
-        self.resources = resource_governor or ResourceGovernor()
-        self.preferences = MaintainerPreferences()
-        self.telemetry = TelemetryIngestor()
+        self.governance = governance or GovernanceEngine(state_manager=self.state)
+        self.resources = resource_governor or ResourceGovernor(state_manager=self.state)
+        self.preferences = MaintainerPreferences(state_manager=self.state)
+        self.telemetry = TelemetryIngestor(state_manager=self.state)
         self.profiler = PerformanceProfiler()
         self.sandbox = SandboxRunner()
         self.planner = RecursivePlanner(self.privacy, self.governance)
@@ -103,7 +103,7 @@ class HermesCIAgent:
             self.state.approve_proposal(proposal_id, user_id, maintainer_notes)
             self.state.update_proposal_status(proposal_id, "IN_SANDBOX")
             self.governance.record_feedback(repo["id"], approved=True)
-            self.preferences.record_feedback(proposal_id, approved=True, rationale=maintainer_notes)
+            self.preferences.record_feedback(proposal_id, approved=True, rationale=maintainer_notes, repo_id=repo["id"])
 
             # Generate synthetic patch files for verified sandbox testing
             patch_files = self._generate_patch_files(proposal, repo["path"])
@@ -145,7 +145,7 @@ class HermesCIAgent:
         success = self.state.reject_proposal(proposal_id, rationale, user_id)
         if success:
             self.governance.record_feedback(proposal["repo_id"], approved=False)
-            self.preferences.record_feedback(proposal_id, approved=False, rationale=rationale)
+            self.preferences.record_feedback(proposal_id, approved=False, rationale=rationale, repo_id=proposal["repo_id"])
 
         return {"success": success, "proposal_id": proposal_id, "rationale": rationale}
 

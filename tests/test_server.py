@@ -1,5 +1,6 @@
 import json
 import os
+import socket
 import tempfile
 import threading
 import time
@@ -22,8 +23,10 @@ class TestServerAPI(unittest.TestCase):
         sample_repo = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "examples", "sample_forked_repo"))
         cls.agent.register_repo("sample-forked-repo", "Sample Forked Service", sample_repo)
 
-        # Start test HTTP server on random high port
-        cls.port = 18895
+        # Start test HTTP server on a guaranteed available ephemeral port
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(("127.0.0.1", 0))
+            cls.port = s.getsockname()[1]
         cls.server_thread = threading.Thread(
             target=run_server,
             kwargs={"host": "127.0.0.1", "port": cls.port, "agent": cls.agent},

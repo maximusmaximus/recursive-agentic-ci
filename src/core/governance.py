@@ -4,7 +4,7 @@ Protects repositories from runaway recursive loops, cosmetic commit farming,
 token bleed, and vanity PR gaming. Enforces strict quality and semantic delta thresholds.
 """
 import time
-from typing import Dict, Any, List, Tuple
+from typing import Dict, Any, List, Optional, Tuple
 
 class GovernanceEngine:
     """Enforces resource limits, quality gates, and anti-gamification rules."""
@@ -14,18 +14,29 @@ class GovernanceEngine:
         daily_token_budget: int = 250000,
         daily_proposals_max: int = 5,
         min_cooldown_seconds: int = 3600,
-        min_semantic_delta_score: float = 0.45
+        min_semantic_delta_score: float = 0.45,
+        state_manager: Optional[Any] = None,
     ):
         self.daily_token_budget = daily_token_budget
         self.daily_proposals_max = daily_proposals_max
         self.min_cooldown_seconds = min_cooldown_seconds
         self.min_semantic_delta_score = min_semantic_delta_score
+        self._state_manager = state_manager
 
-        # In-memory tracking per repo
+        # In-memory cache per repo (backed by SQLite when state_manager is provided)
         self._usage: Dict[str, Dict[str, Any]] = {}
+
+    def _persist(self, repo_id: str):
+        if self._state_manager is not None and repo_id in self._usage:
+            self._state_manager.save_governance_usage(repo_id, self._usage[repo_id])
 
     def get_repo_state(self, repo_id: str) -> Dict[str, Any]:
         now = time.time()
+        if repo_id not in self._usage and self._state_manager is not None:
+            persisted = self._state_manager.get_governance_usage(repo_id)
+            if persisted:
+                self._usage[repo_id] = persisted
+
         if repo_id not in self._usage:
             self._usage[repo_id] = {
                 "tokens_used_today": 0,
@@ -35,12 +46,15 @@ class GovernanceEngine:
                 "circuit_breaker_active": False,
                 "reset_timestamp": now + 86400
             }
+            self._persist(repo_id)
+
         state = self._usage[repo_id]
         if now > state["reset_timestamp"]:
             state["tokens_used_today"] = 0
             state["proposals_today"] = 0
             state["reset_timestamp"] = now + 86400
             state["circuit_breaker_active"] = False
+            self._persist(repo_id)
         return state
 
     def check_preflight(self, repo_id: str, estimated_tokens: int = 2000) -> Tuple[bool, str]:
@@ -83,8 +97,9 @@ class GovernanceEngine:
 
         # Reward high-value engineering patterns
         high_value_phrases = [
-            "zero-division", "boundary check", "prime", "index", "cache", 
-            "resilience", "concurrency", "test coverage", "stack trace", "crash"
+            "zero-division", "boundary", "validation", "prime", "index", "cache",
+            "resilience", "concurrency", "test coverage", "unit test", "stack trace",
+            "crash", "complexity", "exception", "telemetry", "factorization"
         ]
         for phrase in high_value_phrases:
             if phrase in title or phrase in summary or phrase in rationale:
@@ -107,6 +122,7 @@ class GovernanceEngine:
         state["tokens_used_today"] += tokens_burned
         state["proposals_today"] += proposals_created
         state["last_run_timestamp"] = time.time()
+        self._persist(repo_id)
 
     def record_feedback(self, repo_id: str, approved: bool):
         state = self.get_repo_state(repo_id)
@@ -116,3 +132,4 @@ class GovernanceEngine:
             state["consecutive_rejections"] += 1
             if state["consecutive_rejections"] >= 3:
                 state["circuit_breaker_active"] = True
+        self._persist(repo_id)

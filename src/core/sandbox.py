@@ -6,6 +6,7 @@ preventing any corruption of main branches until strict test gates are passed.
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 from typing import Dict, Any, Tuple, Optional
@@ -42,8 +43,12 @@ class SandboxRunner:
             # Set PYTHONPATH so sandbox imports its own isolated files
             env["PYTHONPATH"] = temp_dir + os.pathsep + env.get("PYTHONPATH", "")
 
+            resolved_cmd = test_command
+            if resolved_cmd.startswith("python ") and shutil.which("python") is None:
+                resolved_cmd = f'"{sys.executable}" ' + resolved_cmd[len("python "):]
+
             proc = subprocess.run(
-                test_command,
+                resolved_cmd,
                 shell=True,
                 cwd=temp_dir,
                 capture_output=True,

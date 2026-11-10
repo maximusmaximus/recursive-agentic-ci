@@ -9,11 +9,26 @@ from typing import Dict, List, Any, Optional
 class MaintainerPreferences:
     """Stores and summarizes human feedback into rules for Venice AI generation."""
 
-    def __init__(self):
+    def __init__(self, state_manager: Optional[Any] = None):
+        self._state_manager = state_manager
         self._rules: List[Dict[str, Any]] = []
+        if self._state_manager is not None:
+            self._hydrate_from_state()
 
-    def record_feedback(self, proposal_id: str, approved: bool, rationale: Optional[str] = None):
-        """Record explicit maintainer rationale on a proposal."""
+    def _hydrate_from_state(self):
+        for row in self._state_manager.list_maintainer_feedback():
+            rationale = row.get("rationale") or ""
+            if not rationale.strip():
+                continue
+            approved = row.get("action") == "APPROVE"
+            self._append_rule(
+                proposal_id=row.get("proposal_id", "unknown"),
+                approved=approved,
+                rationale=rationale,
+                timestamp=row.get("created_at", time.time()),
+            )
+
+    def _append_rule(self, proposal_id: str, approved: bool, rationale: str, timestamp: float):
         if not approved and rationale:
             clean_rule = self._extract_constraint(rationale)
             self._rules.append({
@@ -21,7 +36,7 @@ class MaintainerPreferences:
                 "type": "negative_constraint",
                 "text": clean_rule,
                 "raw_rationale": rationale,
-                "timestamp": time.time(),
+                "timestamp": timestamp,
                 "weight": 1.0
             })
         elif approved and rationale:
@@ -30,9 +45,23 @@ class MaintainerPreferences:
                 "type": "positive_preference",
                 "text": rationale.strip(),
                 "raw_rationale": rationale,
-                "timestamp": time.time(),
+                "timestamp": timestamp,
                 "weight": 1.0
             })
+
+    def record_feedback(self, proposal_id: str, approved: bool, rationale: Optional[str] = None, repo_id: str = "global"):
+        """Record explicit maintainer rationale on a proposal."""
+        if not rationale:
+            return
+        self._append_rule(proposal_id, approved, rationale, time.time())
+        if self._state_manager is not None:
+            action = "APPROVE" if approved else "REJECT"
+            self._state_manager.record_maintainer_feedback(
+                proposal_id=proposal_id,
+                action=action,
+                rationale=rationale,
+                repo_id=repo_id,
+            )
 
     def _extract_constraint(self, rationale: str) -> str:
         text = rationale.strip()
