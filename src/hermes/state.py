@@ -18,8 +18,10 @@ class HermesStateManager:
         self._init_db()
 
     def _get_connection(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path)
+        conn = sqlite3.connect(self.db_path, timeout=5.0)
         conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL;")
+        conn.execute("PRAGMA busy_timeout=5000;")
         return conn
 
     def _init_db(self):
@@ -64,6 +66,28 @@ class HermesStateManager:
                     action TEXT NOT NULL,
                     rationale TEXT,
                     created_at REAL NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS governance_usage (
+                    repo_id TEXT PRIMARY KEY,
+                    tokens_used_today INTEGER DEFAULT 0,
+                    proposals_today INTEGER DEFAULT 0,
+                    consecutive_rejections INTEGER DEFAULT 0,
+                    last_run_timestamp REAL DEFAULT 0,
+                    circuit_breaker_active INTEGER DEFAULT 0,
+                    reset_timestamp REAL NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS telemetry_crashes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    exception_type TEXT NOT NULL,
+                    module TEXT NOT NULL,
+                    line_number INTEGER DEFAULT 0,
+                    function TEXT NOT NULL,
+                    stack_trace TEXT,
+                    frequency INTEGER DEFAULT 1,
+                    updated_at REAL NOT NULL,
+                    UNIQUE(module, function)
                 );
             """)
 
@@ -221,3 +245,113 @@ class HermesStateManager:
                 UPDATE proposals SET status = ?, maintainer_notes = COALESCE(?, maintainer_notes), updated_at = ?
                 WHERE id = ?
             """, (status, notes, now, proposal_id))
+
+    def get_governance_usage(self, repo_id: str) -> Optional[Dict[str, Any]]:
+        with self._get_connection() as conn:
+            row = conn.execute("SELECT * FROM governance_usage WHERE repo_id = ?", (repo_id,)).fetchone()
+            if not row:
+                return None
+            data = dict(row)
+            data["circuit_breaker_active"] = bool(data.get("circuit_breaker_active", 0))
+            return data
+
+    def save_governance_usage(self, repo_id: str, state: Dict[str, Any]):
+        with self._get_connection() as conn:
+            conn.execute("""
+                INSERT OR REPLACE INTO governance_usage (
+                    repo_id, tokens_used_today, proposals_today, consecutive_rejections,
+                    last_run_timestamp, circuit_breaker_active, reset_timestamp
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (
+                repo_id,
+                int(state.get("tokens_used_today", 0)),
+                int(state.get("proposals_today", 0)),
+                int(state.get("consecutive_rejections", 0)),
+                float(state.get("last_run_timestamp", 0.0)),
+                1 if state.get("circuit_breaker_active") else 0,
+                float(state.get("reset_timestamp", time.time() + 86400)),
+            ))
+
+    def get_total_tokens_today(self) -> int:
+        now = time.time()
+        with self._get_connection() as conn:
+            row = conn.execute(
+                "SELECT COALESCE(SUM(tokens_used_today), 0) AS total FROM governance_usage WHERE reset_timestamp > ?",
+                (now,),
+            ).fetchone()
+            return int(row["total"]) if row else 0
+
+    def record_maintainer_feedback(
+        self,
+        proposal_id: str,
+        action: str,
+        rationale: str,
+        repo_id: str = "global",
+        user_id: str = "maintainer",
+    ):
+        if not rationale:
+            return
+        now = time.time()
+        with self._get_connection() as conn:
+            existing = conn.execute(
+                "SELECT id FROM maintainer_feedback WHERE proposal_id = ? AND action = ? AND rationale = ?",
+                (proposal_id, action, rationale),
+            ).fetchone()
+            if not existing:
+                conn.execute("""
+                    INSERT INTO maintainer_feedback (proposal_id, repo_id, user_id, action, rationale, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (proposal_id, repo_id, user_id, action, rationale, now))
+
+    def list_maintainer_feedback(self, repo_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        query = "SELECT * FROM maintainer_feedback WHERE rationale IS NOT NULL AND rationale != ''"
+        params: List[Any] = []
+        if repo_id:
+            query += " AND repo_id = ?"
+            params.append(repo_id)
+        query += " ORDER BY id ASC"
+        with self._get_connection() as conn:
+            rows = conn.execute(query, params).fetchall()
+            return [dict(r) for r in rows]
+
+    def upsert_telemetry_crash(self, crash: Dict[str, Any], max_history: int = 200):
+        now = time.time()
+        mod = crash.get("module", "unknown")
+        fn = crash.get("function", "unknown")
+        freq = int(crash.get("frequency", 1))
+        with self._get_connection() as conn:
+            existing = conn.execute(
+                "SELECT id, frequency FROM telemetry_crashes WHERE module = ? AND function = ?",
+                (mod, fn),
+            ).fetchone()
+            if existing:
+                conn.execute(
+                    "UPDATE telemetry_crashes SET frequency = ?, stack_trace = COALESCE(?, stack_trace), updated_at = ? WHERE id = ?",
+                    (int(existing["frequency"]) + freq, crash.get("stack_trace"), now, existing["id"]),
+                )
+            else:
+                conn.execute("""
+                    INSERT INTO telemetry_crashes (exception_type, module, line_number, function, stack_trace, frequency, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    crash.get("exception_type", "UnhandledException"),
+                    mod,
+                    int(crash.get("line_number", 0)),
+                    fn,
+                    crash.get("stack_trace", ""),
+                    freq,
+                    now,
+                ))
+                conn.execute("""
+                    DELETE FROM telemetry_crashes WHERE id NOT IN (
+                        SELECT id FROM telemetry_crashes ORDER BY updated_at DESC LIMIT ?
+                    )
+                """, (max_history,))
+
+    def list_telemetry_crashes(self, limit: int = 200) -> List[Dict[str, Any]]:
+        with self._get_connection() as conn:
+            rows = conn.execute(
+                "SELECT exception_type, module, line_number, function, stack_trace, frequency FROM telemetry_crashes ORDER BY frequency DESC, updated_at DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+            return [dict(r) for r in rows]

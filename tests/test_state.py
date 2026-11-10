@@ -62,5 +62,49 @@ class TestStateManager(unittest.TestCase):
         self.assertEqual(rejected["status"], "REJECTED")
         self.assertEqual(rejected["rejection_reason"], "We only use stdlib")
 
+    def test_cross_instance_governance_preferences_and_telemetry_persistence(self):
+        from src.core.governance import GovernanceEngine
+        from src.hermes.resources import ResourceGovernor
+        from src.patterns.preferences import MaintainerPreferences
+        from src.patterns.telemetry import TelemetryIngestor
+
+        # Process 1 records governance burn, feedback constraints, and runtime crash
+        gov1 = GovernanceEngine(min_cooldown_seconds=120, state_manager=self.state)
+        gov1.record_run("repo-alpha", tokens_burned=4500, proposals_created=2)
+        gov1.record_feedback("repo-alpha", approved=False)
+
+        prefs1 = MaintainerPreferences(state_manager=self.state)
+        prefs1.record_feedback("prop-900", approved=False, rationale="No third-party ORM dependencies", repo_id="repo-alpha")
+
+        telem1 = TelemetryIngestor(state_manager=self.state)
+        telem1.ingest_raw_stacktrace(
+            'Traceback:\n  File "worker.py", line 42, in dispatch\nRuntimeError: boom',
+            "RuntimeError",
+        )
+        telem1.ingest_raw_stacktrace(
+            'Traceback:\n  File "worker.py", line 42, in dispatch\nRuntimeError: boom',
+            "RuntimeError",
+        )
+
+        # Process 2 reconnects to the same SQLite DB in a fresh object graph
+        state2 = HermesStateManager(self.db_path)
+        gov2 = GovernanceEngine(min_cooldown_seconds=120, state_manager=state2)
+        res2 = ResourceGovernor(state_manager=state2)
+        prefs2 = MaintainerPreferences(state_manager=state2)
+        telem2 = TelemetryIngestor(state_manager=state2)
+
+        ok, msg = gov2.check_preflight("repo-alpha")
+        self.assertFalse(ok)
+        self.assertIn("Cooldown in effect", msg)
+        self.assertEqual(res2.get_resource_snapshot()["tokens_consumed_today"], 4500)
+
+        constraints = prefs2.get_active_constraints()
+        self.assertTrue(any("DO NOT: No third-party ORM dependencies" in c for c in constraints))
+
+        crashes = telem2.get_priority_crashes(limit=5)
+        self.assertEqual(len(crashes), 1)
+        self.assertEqual(crashes[0]["module"], "worker.py")
+        self.assertEqual(crashes[0]["frequency"], 2)
+
 if __name__ == "__main__":
     unittest.main()

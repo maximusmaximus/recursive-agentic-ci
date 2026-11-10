@@ -6,14 +6,20 @@ and disk footprint to ensure the agent does not overwhelm host resources.
 import os
 import shutil
 import time
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 class ResourceGovernor:
     """Tracks and throttles system and LLM token resources."""
 
-    def __init__(self, daily_token_quota: int = 250000, max_concurrent_sandboxes: int = 2):
+    def __init__(
+        self,
+        daily_token_quota: int = 250000,
+        max_concurrent_sandboxes: int = 2,
+        state_manager: Optional[Any] = None,
+    ):
         self.daily_token_quota = daily_token_quota
         self.max_concurrent_sandboxes = max_concurrent_sandboxes
+        self._state_manager = state_manager
         self._tokens_consumed_today = 0
         self._active_sandboxes = 0
         self._last_reset = time.time()
@@ -43,11 +49,18 @@ class ResourceGovernor:
         except Exception:
             pass
 
+        persisted_tokens = (
+            self._state_manager.get_total_tokens_today()
+            if self._state_manager is not None
+            else 0
+        )
+        consumed_today = persisted_tokens + self._tokens_consumed_today
+
         return {
             "daily_token_quota": self.daily_token_quota,
-            "tokens_consumed_today": self._tokens_consumed_today,
-            "token_budget_remaining": max(0, self.daily_token_quota - self._tokens_consumed_today),
-            "quota_utilization_pct": round((self._tokens_consumed_today / max(1, self.daily_token_quota)) * 100, 1),
+            "tokens_consumed_today": consumed_today,
+            "token_budget_remaining": max(0, self.daily_token_quota - consumed_today),
+            "quota_utilization_pct": round((consumed_today / max(1, self.daily_token_quota)) * 100, 1),
             "active_sandboxes": self._active_sandboxes,
             "max_concurrent_sandboxes": self.max_concurrent_sandboxes,
             "disk_free_gb": disk_free_gb,

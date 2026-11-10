@@ -10,9 +10,12 @@ from typing import Dict, List, Any, Optional
 class TelemetryIngestor:
     """Ingests and groups runtime crash telemetry."""
 
-    def __init__(self, max_history: int = 200):
+    def __init__(self, max_history: int = 200, state_manager: Optional[Any] = None):
         self.max_history = max_history
+        self._state_manager = state_manager
         self._crashes: List[Dict[str, Any]] = []
+        if self._state_manager is not None:
+            self._crashes = self._state_manager.list_telemetry_crashes(limit=self.max_history)
 
     def ingest_payload(self, payload: Dict[str, Any]) -> int:
         """Ingest raw JSON or structured crash dump."""
@@ -51,6 +54,11 @@ class TelemetryIngestor:
         return crash_entry
 
     def _record_crash(self, crash: Dict[str, Any]):
+        if self._state_manager is not None:
+            self._state_manager.upsert_telemetry_crash(crash, max_history=self.max_history)
+            self._crashes = self._state_manager.list_telemetry_crashes(limit=self.max_history)
+            return
+
         # Deduplicate and increment frequency if matching module and function
         for existing in self._crashes:
             if existing.get("module") == crash.get("module") and existing.get("function") == crash.get("function"):
@@ -63,5 +71,7 @@ class TelemetryIngestor:
 
     def get_priority_crashes(self, limit: int = 5) -> List[Dict[str, Any]]:
         """Return highest frequency crashes requiring recursive fixes."""
+        if self._state_manager is not None:
+            return self._state_manager.list_telemetry_crashes(limit=limit)
         sorted_crashes = sorted(self._crashes, key=lambda x: x.get("frequency", 1), reverse=True)
         return sorted_crashes[:limit]
