@@ -1,9 +1,10 @@
 # Hermes Recursive Agentic Continuous Integration (HITL) 🚀
 
-[![Venice AI Privacy](https://img.shields.io/badge/Venice%20AI-Zero--Data%20Retention-emerald?style=flat-square)](https://venice.ai)
-[![Telegram HITL](https://img.shields.io/badge/Telegram-HITL%20Inline%20Controls-blue?style=flat-square)](https://telegram.org)
-[![Model Context Protocol](https://img.shields.io/badge/Protocol-MCP%20JSON--RPC%202.0-indigo?style=flat-square)](https://modelcontextprotocol.io)
-[![License: MIT](https://img.shields.io/badge/License-MIT-zinc?style=flat-square)](LICENSE)
+[![CI Suite](https://github.com/maximusmaximus/recursive-agentic-ci/actions/workflows/ci.yml/badge.svg)](https://github.com/maximusmaximus/recursive-agentic-ci/actions/workflows/ci.yml)
+[![Venice AI Privacy](https://img.shields.io/badge/Venice%20AI-ZDR%20%2B%20E2EE%20Enclave-10b981?style=flat-square)](https://venice.ai)
+[![Telegram HITL](https://img.shields.io/badge/Telegram-HITL%20Inline%20Controls-0284c7?style=flat-square)](https://telegram.org)
+[![Model Context Protocol](https://img.shields.io/badge/Protocol-MCP%20JSON--RPC%202.0-6366f1?style=flat-square)](https://modelcontextprotocol.io)
+[![License: MIT](https://img.shields.io/badge/License-MIT-71717a?style=flat-square)](LICENSE)
 
 A generalized, production-ready framework for **Recursive Continuous Integration with Human-and-Agent-in-the-Loop (HITL)**.
 
@@ -29,7 +30,7 @@ Hermes continuously audits your target codebases, formulates high-impact feature
 ### 1. Installation
 
 ```bash
-git clone https://github.com/your-org/recursive-agentic-ci.git
+git clone https://github.com/maximusmaximus/recursive-agentic-ci.git
 cd recursive-agentic-ci
 pip install -e .[full]
 ```
